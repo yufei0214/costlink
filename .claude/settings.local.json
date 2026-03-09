@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker-compose up -d --build)",
+      "Bash(docker compose up -d --build)",
+      "Bash(java -version 2>&1 | head -1)",
+      "Bash(cd /Users/yufei/workspace_person/CostLink && docker compose restart backend)"
+    ]
+  }
+}
