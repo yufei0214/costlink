@@ -1,0 +1,73 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: costlink-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: costlink123
+      MYSQL_DATABASE: costlink
+      MYSQL_USER: costlink
+      MYSQL_PASSWORD: costlink123
+      TZ: Asia/Shanghai
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./init/init.sql:/docker-entrypoint-initdb.d/init.sql
+    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    networks:
+      - costlink-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+
+  backend:
+    build: ./costlink-backend
+    container_name: costlink-backend
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/costlink?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai
+      SPRING_DATASOURCE_USERNAME: costlink
+      SPRING_DATASOURCE_PASSWORD: costlink123
+      LDAP_ENABLED: "true"
+      LDAP_URL: "ldap://ldap.startdt.net:389"
+      LDAP_BASE: "dc=startdt,dc=net"
+      LDAP_USER_DN_PATTERN: "uid={0},ou=people"
+      # Service account mode (optional - leave unset for simple bind mode)
+      # LDAP_BIND_DN: "cn=zhouchao,dc=example,dc=com"
+      # LDAP_BIND_PASSWORD: "zhouchao@you#"
+      # LDAP_USER_SEARCH_FILTER: "(uid={0})"
+      # LDAP_USER_SEARCH_BASE: "ou=people"
+      # LDAP attribute mapping
+      # LDAP_ATTR_DISPLAY_NAME: "cn"
+      # LDAP_ATTR_EMAIL: "mail"
+      ADMIN_USERS: admin,zhouchao
+      TZ: Asia/Shanghai
+    ports:
+      - "8080:8080"
+    volumes:
+      - upload_data:/app/uploads
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - costlink-network
+
+  frontend:
+    build: ./costlink-frontend
+    container_name: costlink-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - costlink-network
+
+volumes:
+  mysql_data:
+  upload_data:
+
+networks:
+  costlink-network:
+    driver: bridge
