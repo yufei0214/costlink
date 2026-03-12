@@ -78,6 +78,9 @@ export const updateAdminPayAccount = (alipayPayAccount: string) =>
 export const getAdminConfig = () =>
   api.get('/admin/config')
 
+export const deleteReimbursements = (ids: number[]) =>
+  api.delete('/admin/reimbursements', { data: { ids } })
+
 export const exportImages = (ids: number[]) =>
   api.post('/admin/export', { ids }, { responseType: 'blob' })
 
