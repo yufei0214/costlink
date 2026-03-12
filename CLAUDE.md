@@ -47,6 +47,7 @@ Base package: `com.costlink`
 - **exception/**: `BusinessException` + `GlobalExceptionHandler` (global `@RestControllerAdvice`)
 
 ### Frontend (Vue 3, TypeScript, Vite, Element Plus)
+- `@` path alias maps to `src/` (configured in `vite.config.ts`)
 - **api/index.ts**: All API calls centralized here; axios instance with JWT interceptor (401 → redirect to login)
 - **router/index.ts**: Route guards — `meta.requiresAuth` (default true), `meta.requiresAdmin`
 - **stores/user.ts**: Pinia store for user state and auth
@@ -71,13 +72,39 @@ MySQL 8.0. Tables: `t_user`, `t_reimbursement`, `t_reimbursement_image`, `t_admi
 
 Schema initialized via `init/init.sql`. Default admin: `admin` / `admin123`
 
+## API Endpoints
+
+All backend endpoints are prefixed `/api`. Frontend axios instance (`api/index.ts`) auto-prepends this.
+
+| Group | Path Pattern | Auth |
+|-------|-------------|------|
+| Auth | `/api/auth/login`, `/api/auth/me` | login is public, me requires auth |
+| User | `/api/user/profile`, `/api/user/alipay` | authenticated |
+| Reimbursement | `/api/reimbursement/**` | authenticated |
+| Admin | `/api/admin/**` | ADMIN role |
+| Uploads | `/api/uploads/**` | public (static files) |
+
+File upload limit: 10MB per file, 50MB per request.
+
 ## Configuration
 
 Backend config in `application.yml`, all overridable via env vars (see `docker-compose.yml`):
+
+### Database (Docker default credentials)
+- `SPRING_DATASOURCE_URL`: JDBC URL (default `jdbc:mysql://localhost:3306/costlink?...`)
+- `SPRING_DATASOURCE_USERNAME`: DB user (default `costlink`)
+- `SPRING_DATASOURCE_PASSWORD`: DB password (default `costlink123`)
+
+### Auth & Admin
 - `LDAP_ENABLED`: Enable LDAP auth (default `true`; `false` = mock login mode)
 - `ADMIN_USERS`: Comma-separated admin usernames
 - `JWT_SECRET`: JWT signing key
-- `UPLOAD_PATH`: File upload directory (default `/app/uploads`)
+
+### OCR
 - `QWEN_API_KEY`: Qwen VL API key for OCR amount recognition
 - `QWEN_MODEL`: Qwen VL model name (default `qwen-vl-plus`)
 - `QWEN_ENDPOINT`: DashScope API endpoint
+- `QWEN_TIMEOUT`: OCR request timeout in seconds (default `30`)
+
+### Other
+- `UPLOAD_PATH`: File upload directory (default `/app/uploads`)
