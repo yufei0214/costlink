@@ -47,6 +47,7 @@
             :headers="uploadHeaders"
             :on-success="handleUploadSuccess"
             :on-error="handleUploadError"
+            :on-preview="handlePreview"
             :before-upload="beforeUpload"
             list-type="picture-card"
             accept="image/*"
@@ -56,6 +57,12 @@
               <div class="el-upload__tip">支持jpg/png格式，单个文件不超过10MB</div>
             </template>
           </el-upload>
+
+          <el-image-viewer
+            v-if="previewVisible"
+            :url-list="[previewUrl]"
+            @close="previewVisible = false"
+          />
         </el-form-item>
 
         <el-form-item label="识别金额">
@@ -110,7 +117,7 @@ import { ref, reactive, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { createReimbursement, updateAlipayAccount } from '@/api'
-import { ElMessage, type FormInstance, type FormRules, type UploadFile } from 'element-plus'
+import { ElMessage, ElImageViewer, type FormInstance, type FormRules, type UploadFile } from 'element-plus'
 
 interface UploadedImage {
   imagePath: string
@@ -127,6 +134,9 @@ const savingName = ref(false)
 const realName = ref('')
 const fileList = ref<UploadFile[]>([])
 const uploadedImages = ref<UploadedImage[]>([])
+
+const previewVisible = ref(false)
+const previewUrl = ref('')
 
 const uploadUrl = '/api/reimbursement/upload'
 const uploadHeaders = computed(() => ({
@@ -168,6 +178,11 @@ const canSubmit = computed(() => {
     form.totalAmount > 0 &&
     uploadedImages.value.length > 0
 })
+
+function handlePreview(file: UploadFile) {
+  previewUrl.value = file.url || ''
+  previewVisible.value = true
+}
 
 function beforeUpload(file: File) {
   const isImage = file.type.startsWith('image/')
