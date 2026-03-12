@@ -70,6 +70,13 @@ public class AdminController {
         return ApiResponse.success("标记付款成功", null);
     }
 
+    @DeleteMapping("/reimbursements")
+    public ApiResponse<Void> deleteReimbursements(@RequestBody Map<String, List<Long>> body) {
+        List<Long> ids = body.get("ids");
+        reimbursementService.deleteReimbursements(ids);
+        return ApiResponse.success("删除成功", null);
+    }
+
     @PutMapping("/config/alipay")
     public ApiResponse<Void> updatePayAccount(
             @AuthenticationPrincipal UserPrincipal principal,
