@@ -42,6 +42,7 @@ services:
       # LDAP attribute mapping
       # LDAP_ATTR_DISPLAY_NAME: "cn"
       # LDAP_ATTR_EMAIL: "mail"
+      QWEN_API_KEY: ${QWEN_API_KEY}
       ADMIN_USERS: admin,zhouchao
       TZ: Asia/Shanghai
     ports:
