@@ -12,14 +12,23 @@
           <el-radio-button label="REJECTED">已驳回</el-radio-button>
         </el-radio-group>
 
-        <el-button
-          type="primary"
-          :disabled="selectedIds.length === 0"
-          @click="handleExport"
-        >
-          <el-icon><Download /></el-icon>
-          导出选中图片
-        </el-button>
+        <div>
+          <el-button
+            type="danger"
+            :disabled="deletableIds.length === 0"
+            @click="handleBatchDelete"
+          >
+            批量删除 ({{ deletableIds.length }})
+          </el-button>
+          <el-button
+            type="primary"
+            :disabled="selectedIds.length === 0"
+            @click="handleExport"
+          >
+            <el-icon><Download /></el-icon>
+            导出选中图片
+          </el-button>
+        </div>
       </div>
 
       <el-table
@@ -148,6 +157,7 @@ import {
   confirmReimbursement,
   rejectReimbursement,
   markAsPaid,
+  deleteReimbursements,
   exportImages
 } from '@/api'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -179,6 +189,7 @@ const pageSize = ref(10)
 const total = ref(0)
 const statusFilter = ref('')
 const selectedIds = ref<number[]>([])
+const deletableIds = ref<number[]>([])
 const selectedTotalAmount = ref(0)
 const dialogVisible = ref(false)
 const currentRecord = ref<ReimbursementRecord | null>(null)
@@ -210,6 +221,9 @@ function handleSelectionChange(selection: ReimbursementRecord[]) {
   const paidRecords = selection.filter(r => r.status === 'PAID')
   selectedIds.value = paidRecords.map(r => r.id)
   selectedTotalAmount.value = paidRecords.reduce((sum, r) => sum + r.totalAmount, 0)
+  deletableIds.value = selection
+    .filter(r => r.status === 'REJECTED' || r.status === 'PAID')
+    .map(r => r.id)
 }
 
 async function viewDetail(row: ReimbursementRecord) {
@@ -277,6 +291,26 @@ async function handlePay(row: ReimbursementRecord) {
     loadData()
   } catch (error: any) {
     ElMessage.error(error.message || '操作失败')
+  }
+}
+
+async function handleBatchDelete() {
+  await ElMessageBox.confirm(
+    `确定要删除选中的 ${deletableIds.value.length} 条记录吗？此操作不可恢复。`,
+    '批量删除',
+    {
+      confirmButtonText: '确认删除',
+      cancelButtonText: '取消',
+      type: 'warning'
+    }
+  )
+
+  try {
+    await deleteReimbursements(deletableIds.value)
+    ElMessage.success('删除成功')
+    loadData()
+  } catch (error: any) {
+    ElMessage.error(error.message || '删除失败')
   }
 }
 
