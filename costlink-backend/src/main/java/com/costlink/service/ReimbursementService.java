@@ -136,6 +136,22 @@ public class ReimbursementService {
         reimbursementMapper.updateById(reimbursement);
     }
 
+    @Transactional
+    public void deleteReimbursements(List<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
+            throw new BusinessException("请选择要删除的记录");
+        }
+        List<Reimbursement> list = reimbursementMapper.selectBatchIds(ids);
+        for (Reimbursement r : list) {
+            if (!"REJECTED".equals(r.getStatus()) && !"PAID".equals(r.getStatus())) {
+                throw new BusinessException("只能删除已驳回或已付款的记录（ID: " + r.getId() + "）");
+            }
+        }
+        imageMapper.delete(new LambdaQueryWrapper<ReimbursementImage>()
+                .in(ReimbursementImage::getReimbursementId, ids));
+        reimbursementMapper.deleteBatchIds(ids);
+    }
+
     public StatisticsResponse getStatistics() {
         long total = reimbursementMapper.selectCount(null);
         long pending = reimbursementMapper.countByStatus("PENDING");
