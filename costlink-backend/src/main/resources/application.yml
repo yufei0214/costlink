@@ -43,5 +43,7 @@ app:
     attr-display-name: ${LDAP_ATTR_DISPLAY_NAME:cn}
     attr-email: ${LDAP_ATTR_EMAIL:mail}
   ocr:
-    data-path: ${TESSDATA_PREFIX:/usr/share/tesseract-ocr/4.00/tessdata}
-    language: chi_sim+eng
+    api-key: ${QWEN_API_KEY:}
+    model: ${QWEN_MODEL:qwen-vl-plus}
+    endpoint: ${QWEN_ENDPOINT:https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation}
+    timeout: ${QWEN_TIMEOUT:30}

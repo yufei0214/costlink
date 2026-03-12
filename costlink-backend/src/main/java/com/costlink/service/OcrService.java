@@ -1,19 +1,24 @@
 package com.costlink.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
-import net.sourceforge.tess4j.Tesseract;
-import net.sourceforge.tess4j.TesseractException;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestClient;
 import org.springframework.web.multipart.MultipartFile;
 
-import javax.imageio.ImageIO;
-import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Duration;
+import java.util.Base64;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -25,16 +30,37 @@ public class OcrService {
     @Value("${app.upload.path:/app/uploads}")
     private String uploadPath;
 
-    @Value("${app.ocr.data-path:/usr/share/tesseract-ocr/4.00/tessdata}")
-    private String tessDataPath;
+    @Value("${app.ocr.api-key:}")
+    private String apiKey;
 
-    @Value("${app.ocr.language:chi_sim+eng}")
-    private String language;
+    @Value("${app.ocr.model:qwen-vl-plus}")
+    private String model;
+
+    @Value("${app.ocr.endpoint:https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation}")
+    private String endpoint;
+
+    @Value("${app.ocr.timeout:30}")
+    private int timeoutSeconds;
+
+    private RestClient restClient;
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    private static final String PROMPT = "请仔细查看这张图片，这是一张消费/购买截图。请识别并提取图片中的实际支付金额（实付款金额）。只返回一个纯数字金额（例如：29.90），不要包含货币符号、单位或任何其他文字说明。如果图片中无法识别到支付金额，请只返回 null。";
 
     private static final Pattern AMOUNT_PATTERN = Pattern.compile(
         "(?:(?:\\u00a5|CNY|RMB|\\u5143)?\\s*)?([0-9]+(?:[,，][0-9]{3})*(?:\\.[0-9]{1,2})?)\\s*(?:\\u5143|CNY|RMB)?",
         Pattern.CASE_INSENSITIVE
     );
+
+    @PostConstruct
+    public void init() {
+        if (apiKey == null || apiKey.isBlank()) {
+            log.warn("QWEN_API_KEY is not configured. Image amount recognition will be unavailable.");
+        }
+        this.restClient = RestClient.builder()
+            .baseUrl(endpoint)
+            .build();
+    }
 
     public String saveFile(MultipartFile file) throws IOException {
         String originalFilename = file.getOriginalFilename();
@@ -55,6 +81,11 @@ public class OcrService {
     }
 
     public BigDecimal recognizeAmount(String relativePath) {
+        if (apiKey == null || apiKey.isBlank()) {
+            log.warn("Qwen API key not configured, skipping amount recognition");
+            return null;
+        }
+
         try {
             Path imagePath = Paths.get(uploadPath, relativePath);
             if (!Files.exists(imagePath)) {
@@ -62,25 +93,82 @@ public class OcrService {
                 return null;
             }
 
-            BufferedImage image = ImageIO.read(imagePath.toFile());
-            if (image == null) {
-                log.warn("Cannot read image: {}", imagePath);
+            // 1. Encode image as base64 data URL
+            byte[] imageBytes = Files.readAllBytes(imagePath);
+            String mimeType = Files.probeContentType(imagePath);
+            if (mimeType == null) {
+                mimeType = "image/png";
+            }
+            String dataUrl = "data:" + mimeType + ";base64," + Base64.getEncoder().encodeToString(imageBytes);
+
+            // 2. Build DashScope request
+            Map<String, Object> requestBody = Map.of(
+                "model", model,
+                "input", Map.of(
+                    "messages", List.of(
+                        Map.of(
+                            "role", "user",
+                            "content", List.of(
+                                Map.of("image", dataUrl),
+                                Map.of("text", PROMPT)
+                            )
+                        )
+                    )
+                ),
+                "parameters", Map.of("result_format", "message")
+            );
+
+            // 3. Call Qwen VL API
+            String responseBody = restClient.post()
+                .contentType(MediaType.APPLICATION_JSON)
+                .header("Authorization", "Bearer " + apiKey)
+                .body(requestBody)
+                .retrieve()
+                .body(String.class);
+
+            // 4. Parse response
+            String responseText = extractResponseText(responseBody);
+            log.info("Qwen VL result for {}: {}", relativePath, responseText);
+
+            if (responseText == null || responseText.isBlank() || "null".equalsIgnoreCase(responseText.trim())) {
                 return null;
             }
 
-            Tesseract tesseract = new Tesseract();
-            tesseract.setDatapath(tessDataPath);
-            tesseract.setLanguage(language);
-            tesseract.setPageSegMode(6);
+            // Try direct parse first
+            try {
+                BigDecimal amount = new BigDecimal(responseText.trim());
+                if (amount.compareTo(BigDecimal.ZERO) > 0 && amount.compareTo(new BigDecimal("100000")) < 0) {
+                    return amount;
+                }
+            } catch (NumberFormatException ignored) {
+            }
 
-            String text = tesseract.doOCR(image);
-            log.info("OCR Result: {}", text);
+            // Fall back to regex extraction
+            return extractAmount(responseText);
 
-            return extractAmount(text);
-        } catch (TesseractException | IOException e) {
-            log.error("OCR recognition failed", e);
+        } catch (Exception e) {
+            log.error("Qwen VL recognition failed for {}", relativePath, e);
             return null;
         }
+    }
+
+    private String extractResponseText(String responseBody) {
+        try {
+            JsonNode root = objectMapper.readTree(responseBody);
+            JsonNode choices = root.path("output").path("choices");
+            if (choices.isArray() && !choices.isEmpty()) {
+                JsonNode content = choices.get(0).path("message").path("content");
+                if (content.isArray() && !content.isEmpty()) {
+                    return content.get(0).path("text").asText(null);
+                }
+                if (content.isTextual()) {
+                    return content.asText(null);
+                }
+            }
+        } catch (Exception e) {
+            log.error("Failed to parse Qwen API response: {}", responseBody, e);
+        }
+        return null;
     }
 
     private BigDecimal extractAmount(String text) {
@@ -93,7 +181,7 @@ public class OcrService {
 
         while (matcher.find()) {
             try {
-                String amountStr = matcher.group(1).replace(",", "").replace("，", "");
+                String amountStr = matcher.group(1).replace(",", "").replace("\uff0c", "");
                 BigDecimal amount = new BigDecimal(amountStr);
                 if (amount.compareTo(BigDecimal.ZERO) > 0 && amount.compareTo(new BigDecimal("100000")) < 0) {
                     if (maxAmount == null || amount.compareTo(maxAmount) > 0) {
