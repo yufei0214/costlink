@@ -4,16 +4,13 @@
 
     <el-card class="apply-card">
       <el-form ref="formRef" :model="form" :rules="rules" label-width="120px">
-        <el-form-item v-if="!userStore.user?.alipayAccount" label="真实姓名" required>
+        <el-form-item label="真实姓名" required>
           <el-input
             v-model="realName"
             placeholder="请输入您的真实姓名（用于转账）"
             style="width: 300px"
           />
-          <el-button type="primary" :loading="savingName" @click="saveRealName" style="margin-left: 12px">
-            保存
-          </el-button>
-          <div class="form-tip">提交报销前需填写真实姓名</div>
+          <div v-if="!realName.trim()" class="form-tip">提交报销前需填写真实姓名</div>
         </el-form-item>
 
         <el-form-item label="有效期" required>
@@ -47,6 +44,7 @@
             :headers="uploadHeaders"
             :on-success="handleUploadSuccess"
             :on-error="handleUploadError"
+            :on-remove="handleRemove"
             :on-preview="handlePreview"
             :before-upload="beforeUpload"
             list-type="picture-card"
@@ -77,6 +75,7 @@
                 size="small"
               />
               <span> 元</span>
+              <span v-if="img.ocrAmount === 0" class="amount-tip">未识别到金额，请手动输入</span>
             </div>
           </div>
           <div v-else class="no-images">请先上传购买截图</div>
@@ -130,8 +129,7 @@ const router = useRouter()
 const userStore = useUserStore()
 const formRef = ref<FormInstance>()
 const submitting = ref(false)
-const savingName = ref(false)
-const realName = ref('')
+const realName = ref(userStore.user?.alipayAccount || '')
 const fileList = ref<UploadFile[]>([])
 const uploadedImages = ref<UploadedImage[]>([])
 
@@ -154,25 +152,8 @@ const rules: FormRules = {
   vpnEndDate: [{ required: true, message: '请选择结束日期', trigger: 'change' }]
 }
 
-async function saveRealName() {
-  if (!realName.value.trim()) {
-    ElMessage.warning('请输入真实姓名')
-    return
-  }
-  savingName.value = true
-  try {
-    await updateAlipayAccount(realName.value.trim())
-    userStore.updateAlipayAccount(realName.value.trim())
-    ElMessage.success('保存成功')
-  } catch (error: any) {
-    ElMessage.error(error.message || '保存失败')
-  } finally {
-    savingName.value = false
-  }
-}
-
 const canSubmit = computed(() => {
-  return userStore.user?.alipayAccount &&
+  return realName.value.trim() &&
     form.vpnStartDate &&
     form.vpnEndDate &&
     form.totalAmount > 0 &&
@@ -208,7 +189,11 @@ function handleUploadSuccess(response: any) {
       sortOrder: uploadedImages.value.length
     })
     calculateTotal()
-    ElMessage.success('上传成功')
+    if (!response.data.ocrAmount) {
+      ElMessage.warning('图片金额未识别，请手动输入')
+    } else {
+      ElMessage.success('上传成功')
+    }
   } else {
     ElMessage.error(response.message || '上传失败')
   }
@@ -218,18 +203,38 @@ function handleUploadError() {
   ElMessage.error('上传失败')
 }
 
+function handleRemove(file: UploadFile) {
+  const imagePath = file.response?.data?.imagePath
+  if (imagePath) {
+    const index = uploadedImages.value.findIndex(img => img.imagePath === imagePath)
+    if (index !== -1) {
+      uploadedImages.value.splice(index, 1)
+      calculateTotal()
+    }
+  }
+}
+
 function calculateTotal() {
   form.totalAmount = uploadedImages.value.reduce((sum, img) => sum + (img.ocrAmount || 0), 0)
 }
 
 async function handleSubmit() {
   if (!formRef.value) return
+  if (!realName.value.trim()) {
+    ElMessage.warning('请填写真实姓名')
+    return
+  }
 
   await formRef.value.validate(async (valid) => {
     if (!valid) return
 
     submitting.value = true
     try {
+      // 如果真实姓名有变更，先保存
+      if (realName.value.trim() !== userStore.user?.alipayAccount) {
+        await updateAlipayAccount(realName.value.trim())
+        userStore.updateAlipayAccount(realName.value.trim())
+      }
       await createReimbursement({
         totalAmount: form.totalAmount,
         vpnStartDate: form.vpnStartDate,
@@ -277,6 +282,12 @@ async function handleSubmit() {
 .no-images {
   color: #909399;
   font-size: 14px;
+}
+
+.amount-tip {
+  color: #E6A23C;
+  font-size: 12px;
+  margin-left: 8px;
 }
 
 .form-tip {
