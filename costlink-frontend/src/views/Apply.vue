@@ -204,7 +204,7 @@ function handleUploadError() {
 }
 
 function handleRemove(file: UploadFile) {
-  const imagePath = file.response?.data?.imagePath
+  const imagePath = (file.response as any)?.data?.imagePath
   if (imagePath) {
     const index = uploadedImages.value.findIndex(img => img.imagePath === imagePath)
     if (index !== -1) {
