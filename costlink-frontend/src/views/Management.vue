@@ -269,11 +269,17 @@ async function viewDetail(row: ReimbursementRecord) {
 }
 
 async function handleConfirm(row: ReimbursementRecord) {
-  await ElMessageBox.confirm('确定要确认此报销申请吗？', '确认', {
-    confirmButtonText: '确定',
-    cancelButtonText: '取消',
-    type: 'info'
-  })
+  const remarkText = row.remark ? `\n备注说明：${row.remark}` : ''
+  await ElMessageBox.confirm(
+    `确定要确认此报销申请吗？\n\n申请人：${row.displayName || row.username}\n报销月份：${row.reimbursementMonth}\n金额：¥${row.totalAmount}${remarkText}`,
+    '确认',
+    {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'info',
+      dangerouslyUseHTMLString: false
+    }
+  )
 
   try {
     await confirmReimbursement(row.id)
