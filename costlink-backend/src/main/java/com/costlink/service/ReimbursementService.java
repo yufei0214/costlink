@@ -183,7 +183,7 @@ public class ReimbursementService {
 
             // Header row
             Row headerRow = sheet.createRow(0);
-            String[] headers = {"真实姓名", "报销月份", "报销总金额", "支付截图"};
+            String[] headers = {"真实姓名", "报销月份", "报销总金额", "备注说明", "支付截图"};
             for (int i = 0; i < headers.length; i++) {
                 Cell cell = headerRow.createCell(i);
                 cell.setCellValue(headers[i]);
@@ -194,7 +194,8 @@ public class ReimbursementService {
             sheet.setColumnWidth(0, 15 * 256);
             sheet.setColumnWidth(1, 12 * 256);
             sheet.setColumnWidth(2, 15 * 256);
-            sheet.setColumnWidth(3, 60 * 256);
+            sheet.setColumnWidth(3, 25 * 256);
+            sheet.setColumnWidth(4, 60 * 256);
 
             int rowIndex = 1;
             for (Long id : ids) {
@@ -230,8 +231,12 @@ public class ReimbursementService {
                 amountCell.setCellValue(reimbursement.getTotalAmount().doubleValue());
                 amountCell.setCellStyle(dataStyle);
 
+                Cell remarkCell = row.createCell(3);
+                remarkCell.setCellValue(reimbursement.getRemark() != null ? reimbursement.getRemark() : "");
+                remarkCell.setCellStyle(dataStyle);
+
                 // Embed images in the "支付截图" column
-                int imgCol = 3;
+                int imgCol = 4;
                 int imageCount = 0;
                 for (int i = 0; i < images.size(); i++) {
                     ReimbursementImage image = images.get(i);
