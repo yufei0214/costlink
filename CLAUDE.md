@@ -44,6 +44,7 @@ npm run preview                         # Preview production build
 Notes:
 - No frontend lint script is defined in `costlink-frontend/package.json`.
 - No dedicated frontend test command/framework is configured.
+- No backend test files exist yet. The `mvn test` commands above are listed for reference; Spring Boot Test dependency is available but no tests have been written.
 
 ## Runtime Topology
 
@@ -92,7 +93,8 @@ Notes:
 
 - Reimbursement status lifecycle: `PENDING -> CONFIRMED -> PAID` or `PENDING -> REJECTED`.
 - Typical user flow: maintain payout account -> upload proof images -> OCR amount extraction (manual correction allowed) -> submit reimbursement.
-- Typical admin flow: review/confirm or reject -> mark paid -> optional batch export of paid record images as ZIP.
+- Typical admin flow: review/confirm or reject -> mark paid -> optional batch export of paid record images as ZIP -> Excel export of filtered records (Apache POI).
+- Reimbursement uses `reimbursement_month` (VARCHAR(7), format `yyyy-MM`) instead of date ranges. Users also provide an optional `remark` (VARCHAR(500)).
 
 ## Important Configuration
 
@@ -111,6 +113,7 @@ Upload limits:
 ## Data and Local Access Notes
 
 - Initial schema/data is bootstrapped from `init/init.sql` in Docker MySQL startup.
+- `init/migrate.sql` is a safe incremental migration script (idempotent ALTERs) for upgrading existing deployments — it adds `reimbursement_month` and `remark` columns and drops the old `vpn_start_date`/`vpn_end_date` columns.
 - With local/mock auth (`LDAP_ENABLED=false`), README-documented default admin is `admin / admin123`.
 - In mock mode, first login for a new username can create a local user record automatically.
 
@@ -129,6 +132,8 @@ Upload limits:
 - **Images stored on filesystem** (`UPLOAD_PATH`), not in DB — Docker volume mounts are required for persistence.
 - **OCR is best-effort** — returns `null` if Qwen API is not configured or image is unrecognizable; frontend allows manual amount entry as fallback.
 - **DB foreign keys with CASCADE** — deleting a user cascades to their reimbursements and admin config; deleting a reimbursement cascades to its images. `paid_by` uses `SET NULL` on admin deletion.
+- **Excel export uses Apache POI 5.2.5** — added for admin batch export of reimbursement records with filtering support.
+- **No CI/CD pipeline** — no GitHub Actions, GitLab CI, or other automation is configured.
 
 ## Documentation Drift to Watch
 

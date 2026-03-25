@@ -10,6 +10,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.multipart.MultipartFile;
 
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
+
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.nio.file.Files;
@@ -57,8 +59,12 @@ public class OcrService {
         if (apiKey == null || apiKey.isBlank()) {
             log.warn("QWEN_API_KEY is not configured. Image amount recognition will be unavailable.");
         }
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(Duration.ofSeconds(timeoutSeconds));
+        factory.setReadTimeout(Duration.ofSeconds(timeoutSeconds));
         this.restClient = RestClient.builder()
             .baseUrl(endpoint)
+            .requestFactory(factory)
             .build();
     }
 
@@ -118,13 +124,27 @@ public class OcrService {
                 "parameters", Map.of("result_format", "message")
             );
 
-            // 3. Call Qwen VL API
-            String responseBody = restClient.post()
-                .contentType(MediaType.APPLICATION_JSON)
-                .header("Authorization", "Bearer " + apiKey)
-                .body(requestBody)
-                .retrieve()
-                .body(String.class);
+            // 3. Call Qwen VL API (retry up to 2 times on transient I/O errors)
+            String responseBody = null;
+            int maxRetries = 2;
+            for (int attempt = 0; attempt <= maxRetries; attempt++) {
+                try {
+                    responseBody = restClient.post()
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("Authorization", "Bearer " + apiKey)
+                        .body(requestBody)
+                        .retrieve()
+                        .body(String.class);
+                    break;
+                } catch (org.springframework.web.client.ResourceAccessException e) {
+                    if (attempt < maxRetries) {
+                        log.warn("Qwen API request failed (attempt {}/{}), retrying: {}", attempt + 1, maxRetries + 1, e.getMessage());
+                        Thread.sleep(1000L * (attempt + 1));
+                    } else {
+                        throw e;
+                    }
+                }
+            }
 
             // 4. Parse response
             String responseText = extractResponseText(responseBody);

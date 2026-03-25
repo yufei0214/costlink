@@ -12,9 +12,12 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import lombok.extern.slf4j.Slf4j;
+
 import java.io.IOException;
 import java.math.BigDecimal;
 
+@Slf4j
 @RestController
 @RequestMapping("/api/reimbursement")
 @RequiredArgsConstructor
@@ -26,7 +29,12 @@ public class ReimbursementController {
     @PostMapping("/upload")
     public ApiResponse<UploadResponse> uploadImage(@RequestParam("file") MultipartFile file) throws IOException {
         String imagePath = ocrService.saveFile(file);
-        BigDecimal amount = ocrService.recognizeAmount(imagePath);
+        BigDecimal amount = null;
+        try {
+            amount = ocrService.recognizeAmount(imagePath);
+        } catch (Exception e) {
+            log.warn("OCR识别失败，图片已保存，金额需手动填写: {}", e.getMessage());
+        }
         return ApiResponse.success(new UploadResponse(imagePath, file.getOriginalFilename(), amount));
     }
 
