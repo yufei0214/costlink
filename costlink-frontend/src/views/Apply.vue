@@ -13,28 +13,15 @@
           <div v-if="!realName.trim()" class="form-tip">提交报销前需填写真实姓名</div>
         </el-form-item>
 
-        <el-form-item label="有效期" required>
-          <el-col :span="11">
-            <el-form-item prop="vpnStartDate">
-              <el-date-picker
-                v-model="form.vpnStartDate"
-                type="date"
-                placeholder="开始日期"
-                style="width: 100%"
-              />
-            </el-form-item>
-          </el-col>
-          <el-col :span="2" style="text-align: center">至</el-col>
-          <el-col :span="11">
-            <el-form-item prop="vpnEndDate">
-              <el-date-picker
-                v-model="form.vpnEndDate"
-                type="date"
-                placeholder="结束日期"
-                style="width: 100%"
-              />
-            </el-form-item>
-          </el-col>
+        <el-form-item label="报销月份" prop="reimbursementMonth" required>
+          <el-date-picker
+            v-model="form.reimbursementMonth"
+            type="month"
+            placeholder="选择月份"
+            format="YYYY-MM"
+            value-format="YYYY-MM"
+            style="width: 300px"
+          />
         </el-form-item>
 
         <el-form-item label="购买记录截图" required>
@@ -95,6 +82,18 @@
           </el-button>
         </el-form-item>
 
+        <el-form-item label="备注说明">
+          <el-input
+            v-model="form.remark"
+            type="textarea"
+            :rows="3"
+            placeholder="请输入备注说明（可选）"
+            maxlength="500"
+            show-word-limit
+            style="width: 500px"
+          />
+        </el-form-item>
+
         <el-form-item>
           <el-button
             type="primary"
@@ -142,20 +141,18 @@ const uploadHeaders = computed(() => ({
 }))
 
 const form = reactive({
-  vpnStartDate: null as Date | null,
-  vpnEndDate: null as Date | null,
-  totalAmount: 0
+  reimbursementMonth: '',
+  totalAmount: 0,
+  remark: ''
 })
 
 const rules: FormRules = {
-  vpnStartDate: [{ required: true, message: '请选择开始日期', trigger: 'change' }],
-  vpnEndDate: [{ required: true, message: '请选择结束日期', trigger: 'change' }]
+  reimbursementMonth: [{ required: true, message: '请选择报销月份', trigger: 'change' }]
 }
 
 const canSubmit = computed(() => {
   return realName.value.trim() &&
-    form.vpnStartDate &&
-    form.vpnEndDate &&
+    form.reimbursementMonth &&
     form.totalAmount > 0 &&
     uploadedImages.value.length > 0
 })
@@ -237,8 +234,8 @@ async function handleSubmit() {
       }
       await createReimbursement({
         totalAmount: form.totalAmount,
-        vpnStartDate: form.vpnStartDate,
-        vpnEndDate: form.vpnEndDate,
+        reimbursementMonth: form.reimbursementMonth,
+        remark: form.remark,
         images: uploadedImages.value
       })
       ElMessage.success('报销申请提交成功')

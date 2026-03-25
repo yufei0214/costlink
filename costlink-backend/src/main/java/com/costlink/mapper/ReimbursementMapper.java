@@ -31,6 +31,22 @@ public interface ReimbursementMapper extends BaseMapper<Reimbursement> {
             "ORDER BY r.created_at DESC")
     IPage<Reimbursement> selectByStatusWithUser(Page<Reimbursement> page, @Param("status") String status);
 
+    @Select("<script>" +
+            "SELECT r.*, u.username, u.display_name, u.alipay_account " +
+            "FROM t_reimbursement r " +
+            "LEFT JOIN t_user u ON r.user_id = u.id " +
+            "<where>" +
+            "  <if test='status != null'> AND r.status = #{status}</if>" +
+            "  <if test='username != null'> AND u.alipay_account LIKE #{username}</if>" +
+            "  <if test='month != null'> AND r.reimbursement_month = #{month}</if>" +
+            "</where>" +
+            "ORDER BY r.created_at DESC" +
+            "</script>")
+    IPage<Reimbursement> selectWithFilters(Page<Reimbursement> page,
+                                           @Param("status") String status,
+                                           @Param("username") String username,
+                                           @Param("month") String month);
+
     @Select("SELECT r.*, u.username, u.display_name, u.alipay_account " +
             "FROM t_reimbursement r " +
             "LEFT JOIN t_user u ON r.user_id = u.id " +

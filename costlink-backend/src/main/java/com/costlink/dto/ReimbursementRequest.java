@@ -1,9 +1,9 @@
 package com.costlink.dto;
 
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.util.List;
 
 @Data
@@ -11,11 +11,10 @@ public class ReimbursementRequest {
     @NotNull(message = "总金额不能为空")
     private BigDecimal totalAmount;
 
-    @NotNull(message = "VPN开始日期不能为空")
-    private LocalDate vpnStartDate;
+    @NotBlank(message = "报销月份不能为空")
+    private String reimbursementMonth;
 
-    @NotNull(message = "VPN结束日期不能为空")
-    private LocalDate vpnEndDate;
+    private String remark;
 
     private List<ImageInfo> images;
 

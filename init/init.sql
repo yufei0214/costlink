@@ -45,8 +45,8 @@ CREATE TABLE `t_reimbursement` (
     `id` BIGINT NOT NULL AUTO_INCREMENT,
     `user_id` BIGINT NOT NULL COMMENT '申请人ID',
     `total_amount` DECIMAL(10,2) NOT NULL COMMENT '总金额',
-    `vpn_start_date` DATE NOT NULL COMMENT 'VPN有效期开始',
-    `vpn_end_date` DATE NOT NULL COMMENT 'VPN有效期结束',
+    `reimbursement_month` VARCHAR(7) NOT NULL COMMENT '报销月份(yyyy-MM)',
+    `remark` VARCHAR(500) NULL COMMENT '备注说明',
     `status` VARCHAR(20) NOT NULL DEFAULT 'PENDING' COMMENT '状态: PENDING/CONFIRMED/PAID/REJECTED',
     `reject_reason` VARCHAR(500) NULL COMMENT '驳回原因',
     `paid_at` DATETIME NULL COMMENT '付款时间',
@@ -82,6 +82,6 @@ CREATE TABLE `t_reimbursement_image` (
 -- Insert default admin user (password: admin123)
 -- ----------------------------
 INSERT INTO `t_user` (`username`, `password`, `display_name`, `role`) VALUES
-('admin', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKTVKIUi', '系统管理员', 'ADMIN');
+('admin', '$2a$10$j1aX26jRc.2JOrVWbUJ9J.zOHqdANyQnre4XwZxcKgsPFZ0iQphey', '系统管理员', 'ADMIN');
 
 SET FOREIGN_KEY_CHECKS = 1;

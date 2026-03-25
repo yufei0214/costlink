@@ -5,11 +5,7 @@
     <el-card>
       <el-table :data="records" v-loading="loading" stripe>
         <el-table-column prop="id" label="ID" width="80" />
-        <el-table-column label="有效期" width="200">
-          <template #default="{ row }">
-            {{ formatDate(row.vpnStartDate) }} ~ {{ formatDate(row.vpnEndDate) }}
-          </template>
-        </el-table-column>
+        <el-table-column prop="reimbursementMonth" label="报销月份" width="120" />
         <el-table-column prop="totalAmount" label="金额" width="100">
           <template #default="{ row }">
             ¥{{ row.totalAmount }}
@@ -62,12 +58,13 @@
               {{ getStatusLabel(currentRecord.status) }}
             </el-tag>
           </el-descriptions-item>
-          <el-descriptions-item label="有效期">
-            {{ formatDate(currentRecord.vpnStartDate) }} ~ {{ formatDate(currentRecord.vpnEndDate) }}
-          </el-descriptions-item>
+          <el-descriptions-item label="报销月份">{{ currentRecord.reimbursementMonth }}</el-descriptions-item>
           <el-descriptions-item label="总金额">¥{{ currentRecord.totalAmount }}</el-descriptions-item>
           <el-descriptions-item label="申请时间">{{ formatDateTime(currentRecord.createdAt) }}</el-descriptions-item>
           <el-descriptions-item label="真实姓名">{{ currentRecord.alipayAccount || '-' }}</el-descriptions-item>
+          <el-descriptions-item v-if="currentRecord.remark" label="备注说明" :span="2">
+            {{ currentRecord.remark }}
+          </el-descriptions-item>
           <el-descriptions-item v-if="currentRecord.rejectReason" label="驳回原因" :span="2">
             {{ currentRecord.rejectReason }}
           </el-descriptions-item>
@@ -102,8 +99,8 @@ interface ReimbursementRecord {
   displayName: string
   alipayAccount: string
   totalAmount: number
-  vpnStartDate: string
-  vpnEndDate: string
+  reimbursementMonth: string
+  remark: string
   status: string
   rejectReason: string
   createdAt: string
@@ -147,11 +144,6 @@ async function viewDetail(row: ReimbursementRecord) {
   } catch (error) {
     console.error('Failed to load detail', error)
   }
-}
-
-function formatDate(dateStr: string) {
-  if (!dateStr) return '-'
-  return dateStr.split('T')[0]
 }
 
 function formatDateTime(dateStr: string) {

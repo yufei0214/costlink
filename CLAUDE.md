@@ -4,107 +4,132 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-CostLink is a VPN expense reimbursement system with LDAP authentication, OCR-based amount recognition, and an approval workflow. Vue 3 frontend + Spring Boot 3.2 backend + MySQL 8.0.
+CostLink is a VPN expense reimbursement system with LDAP authentication, OCR amount extraction, and admin approval/payment workflow.
+
+- Frontend: Vue 3 + TypeScript + Vite + Element Plus
+- Backend: Spring Boot 3.2 (Java 17) + Spring Security + MyBatis-Plus
+- Database: MySQL 8.0
+- Deployment: Docker Compose
 
 ## Development Commands
 
-### Full Stack (Docker)
+### Full stack (Docker)
 ```bash
 docker-compose up -d                    # Start all services
 docker-compose up -d --build            # Rebuild and start
+docker-compose logs -f                  # Tail all service logs
 docker-compose down                     # Stop services
 ```
 
-### Backend (costlink-backend/)
+### Backend (`costlink-backend/`)
 ```bash
-docker-compose up -d mysql              # Start MySQL first (required)
+docker-compose up -d mysql              # Start MySQL first
 cd costlink-backend
-mvn spring-boot:run                     # Run backend (port 8080)
+mvn spring-boot:run                     # Run backend on :8080
 mvn clean package                       # Build JAR
-mvn test                                # Run tests
+mvn test                                # Run all tests
 mvn test -Dtest=ClassName               # Run single test class
+mvn test -Dtest=ClassName#methodName    # Run single test method
 ```
 
-### Frontend (costlink-frontend/)
+### Frontend (`costlink-frontend/`)
 ```bash
 cd costlink-frontend
 npm install
-npm run dev                             # Dev server (port 5173), proxies /api to :8080
-npm run build                           # Type-check (vue-tsc) + production build
+npm run dev                             # Dev server on :5173 (proxies /api to backend)
+npm run build                           # vue-tsc + vite build
+npm run preview                         # Preview production build
 ```
-No linter is configured. No test framework is set up.
 
-## Architecture
+Notes:
+- No frontend lint script is defined in `costlink-frontend/package.json`.
+- No dedicated frontend test command/framework is configured.
 
-### Backend (Java 17, Spring Boot 3.2, MyBatis-Plus)
-Base package: `com.costlink`
-- **controller/**: REST endpoints — `AuthController`, `UserController`, `ReimbursementController`, `AdminController`
-- **service/**: Business logic — `AuthService` (LDAP + mock login), `ReimbursementService`, `UserService`, `OcrService` (Qwen VL API)
-- **mapper/**: MyBatis-Plus mapper interfaces (no XML mappings — all queries via MP API)
-- **entity/**: MyBatis-Plus entities with `@TableName("t_*")` annotations, Lombok `@Data`
-- **dto/**: Request/Response objects (API contracts)
-- **config/**: `SecurityConfig`, `JwtTokenProvider`, `JwtAuthenticationFilter`, `UserPrincipal`, `MybatisPlusConfig`, `WebConfig`
-- **exception/**: `BusinessException` + `GlobalExceptionHandler` (global `@RestControllerAdvice`)
+## Runtime Topology
 
-### Frontend (Vue 3, TypeScript, Vite, Element Plus)
-- `@` path alias maps to `src/` (configured in `vite.config.ts`)
-- **api/index.ts**: All API calls centralized here; axios instance with JWT interceptor (401 → redirect to login)
-- **router/index.ts**: Route guards — `meta.requiresAuth` (default true), `meta.requiresAdmin`
-- **stores/user.ts**: Pinia store for user state and auth
-- **views/**: `Layout.vue` (shell), `Login`, `Apply`, `Profile`, `Reimbursement`, `Management` (admin), `Dashboard` (admin)
+- Browser accesses frontend (Vite dev server in local dev; Nginx container in Docker).
+- Frontend sends API requests to `/api` via a centralized axios client (`costlink-frontend/src/api/index.ts`).
+- Vite dev server proxies `/api` to `http://localhost:8080` (`costlink-frontend/vite.config.ts`).
+- Backend exposes REST APIs under `/api/**` and persists data via MyBatis-Plus to MySQL.
+- Uploaded images are stored on disk (`UPLOAD_PATH`) and served from `/api/uploads/**`.
 
-### Security
-- Stateless JWT auth; token in localStorage, sent as `Bearer` header
-- `/api/auth/login` and `/api/uploads/**` are public; `/api/admin/**` requires ADMIN role; all others require authentication
-- `UserPrincipal` extracted from JWT in `JwtAuthenticationFilter` and available via `@AuthenticationPrincipal`
+## Backend Architecture (`com.costlink`)
 
-### Key Business Logic
-- **Reimbursement Status Flow**: PENDING → CONFIRMED → PAID (or PENDING → REJECTED)
-- **Admin Detection**: Users listed in `ADMIN_USERS` env var get ADMIN role at login/user-creation time
-- **Mock Login Mode** (`LDAP_ENABLED=false`): Any credentials work; user auto-created on first login
-- **LDAP Auth**: Supports both simple-bind and service-account modes (configured via `LDAP_BIND_DN`)
-- **OCR**: Qwen VL multimodal API extracts payment amounts from uploaded purchase screenshots (configured via `QWEN_API_KEY`); falls back to regex extraction if direct parse fails
-- **Image Export**: Batch-export paid records' images as ZIP
+- `controller/`: Domain APIs (`AuthController`, `UserController`, `ReimbursementController`, `AdminController`).
+- `service/`: Core business logic (LDAP/local auth, OCR amount extraction, reimbursement lifecycle, user profile/account).
+- `mapper/` + `entity/`: MyBatis-Plus persistence mappings for core tables (`t_user`, `t_reimbursement`, `t_reimbursement_image`, `t_admin_config`). No XML mapper files — mappers use `BaseMapper<T>` auto-CRUD plus `@Select` annotations for complex joins (see `ReimbursementMapper`). Note: `application.yml` declares `mapper-locations: classpath:mapper/*.xml` as a fallback, but no XML files exist.
+- `dto/`: Request/response DTOs with `@Valid` annotations. All API responses wrapped in `ApiResponse<T>` (code, message, data).
+- `config/`: JWT token provider/filter, Spring Security filter chain, CORS, MyBatis-Plus pagination.
+- `exception/`: `GlobalExceptionHandler` (`@RestControllerAdvice`) — `BusinessException` → 400, validation errors → 400, auth errors → 403, all others → 500.
 
-## Database
+### Backend Conventions
+- Entities use Lombok (`@Data`, `@TableName`, `@TableId(type = IdType.AUTO)`).
+- Auto-fill timestamps via `@TableField(fill = FieldFill.INSERT)` / `FieldFill.INSERT_UPDATE`.
+- Controllers receive authenticated user via `@AuthenticationPrincipal UserPrincipal`.
+- MyBatis-Plus pagination is **1-indexed** (page 1 = first page), uses `LambdaQueryWrapper` for type-safe queries.
+- Snake_case DB columns auto-map to camelCase Java fields (`map-underscore-to-camel-case: true`).
 
-MySQL 8.0. Tables: `t_user`, `t_reimbursement`, `t_reimbursement_image`, `t_admin_config`
+## Frontend Architecture
 
-Schema initialized via `init/init.sql`. Default admin: `admin` / `admin123`
+- `src/api/index.ts`: Single API layer; request interceptor injects JWT, response interceptor handles 401 by clearing token and redirecting to `/login`.
+- `src/router/index.ts`: Route guards using `requiresAuth` and `requiresAdmin` meta fields. Default route `/` redirects to `/reimbursement`. Admin-only routes: `/dashboard`, `/management`.
+- `src/stores/user.ts`: Pinia auth/user state.
+- `src/views/*`: User pages (apply/profile/reimbursement) and admin pages (dashboard/management).
+- Path alias: `@` maps to `src/` (configured in `vite.config.ts`). All imports use `@/` prefix.
 
-## API Endpoints
+## Security and Auth Model
 
-All backend endpoints are prefixed `/api`. Frontend axios instance (`api/index.ts`) auto-prepends this.
+- Backend is stateless JWT (`SecurityConfig` + `JwtAuthenticationFilter`).
+- Public endpoints: `/api/auth/login`, `/api/auth/logout`, `/api/uploads/**`.
+- `/api/admin/**` requires `ROLE_ADMIN`; all other `/api/**` endpoints require authentication.
+- Admin role is assigned by username membership in `ADMIN_USERS`.
+- LDAP supports:
+  - simple bind (`LDAP_USER_DN_PATTERN`)
+  - service-account search/bind (`LDAP_BIND_DN`, `LDAP_BIND_PASSWORD`, search filter/base)
+- Local/mock login is enabled when `LDAP_ENABLED=false`. Note: `application.yml` defaults `LDAP_ENABLED` to `true`; `docker-compose.yml` also sets it to `true`. Override to `false` for local dev without LDAP.
 
-| Group | Path Pattern | Auth |
-|-------|-------------|------|
-| Auth | `/api/auth/login`, `/api/auth/me` | login is public, me requires auth |
-| User | `/api/user/profile`, `/api/user/alipay` | authenticated |
-| Reimbursement | `/api/reimbursement/**` | authenticated |
-| Admin | `/api/admin/**` | ADMIN role |
-| Uploads | `/api/uploads/**` | public (static files) |
+## Business Flow Essentials
 
-File upload limit: 10MB per file, 50MB per request.
+- Reimbursement status lifecycle: `PENDING -> CONFIRMED -> PAID` or `PENDING -> REJECTED`.
+- Typical user flow: maintain payout account -> upload proof images -> OCR amount extraction (manual correction allowed) -> submit reimbursement.
+- Typical admin flow: review/confirm or reject -> mark paid -> optional batch export of paid record images as ZIP.
 
-## Configuration
+## Important Configuration
 
-Backend config in `application.yml`, all overridable via env vars (see `docker-compose.yml`):
+Backend config file: `costlink-backend/src/main/resources/application.yml` (env vars override defaults).
 
-### Database (Docker default credentials)
-- `SPRING_DATASOURCE_URL`: JDBC URL (default `jdbc:mysql://localhost:3306/costlink?...`)
-- `SPRING_DATASOURCE_USERNAME`: DB user (default `costlink`)
-- `SPRING_DATASOURCE_PASSWORD`: DB password (default `costlink123`)
+Key variables:
+- Database: `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`
+- Auth/admin: `JWT_SECRET`, `LDAP_ENABLED`, `LDAP_URL`, `LDAP_BASE`, `LDAP_USER_DN_PATTERN`, `LDAP_BIND_DN`, `LDAP_BIND_PASSWORD`, `ADMIN_USERS`
+- OCR (Qwen VL): `QWEN_API_KEY`, `QWEN_MODEL`, `QWEN_ENDPOINT`, `QWEN_TIMEOUT`
+- Uploads: `UPLOAD_PATH`
 
-### Auth & Admin
-- `LDAP_ENABLED`: Enable LDAP auth (default `true`; `false` = mock login mode)
-- `ADMIN_USERS`: Comma-separated admin usernames
-- `JWT_SECRET`: JWT signing key
+Upload limits:
+- 10MB per file
+- 50MB per request
 
-### OCR
-- `QWEN_API_KEY`: Qwen VL API key for OCR amount recognition
-- `QWEN_MODEL`: Qwen VL model name (default `qwen-vl-plus`)
-- `QWEN_ENDPOINT`: DashScope API endpoint
-- `QWEN_TIMEOUT`: OCR request timeout in seconds (default `30`)
+## Data and Local Access Notes
 
-### Other
-- `UPLOAD_PATH`: File upload directory (default `/app/uploads`)
+- Initial schema/data is bootstrapped from `init/init.sql` in Docker MySQL startup.
+- With local/mock auth (`LDAP_ENABLED=false`), README-documented default admin is `admin / admin123`.
+- In mock mode, first login for a new username can create a local user record automatically.
+
+## Docker Build Notes
+
+- Backend Dockerfile uses Aliyun Maven mirror (`maven.aliyun.com`) for faster builds in China.
+- Frontend Dockerfile uses `registry.npmmirror.com` npm mirror.
+- Both use multi-stage builds (builder → slim runtime).
+- Frontend production: Nginx Alpine serves static files, proxies `/api/` to backend, handles Vue Router history mode via `try_files`. Config at `costlink-frontend/nginx.conf`.
+
+## Non-Obvious Architectural Decisions
+
+- **CORS allows all origins** — should be restricted for production.
+- **Admin role is computed at login** from `ADMIN_USERS` env var, not stored as a DB flag. Changing admin list requires affected users to re-login.
+- **LDAP attributes synced on every login** — display names and emails stay fresh from LDAP without manual updates.
+- **Images stored on filesystem** (`UPLOAD_PATH`), not in DB — Docker volume mounts are required for persistence.
+- **OCR is best-effort** — returns `null` if Qwen API is not configured or image is unrecognizable; frontend allows manual amount entry as fallback.
+- **DB foreign keys with CASCADE** — deleting a user cascades to their reimbursements and admin config; deleting a reimbursement cascades to its images. `paid_by` uses `SET NULL` on admin deletion.
+
+## Documentation Drift to Watch
+
+- Root `README.md` still mentions Tesseract, but backend runtime config uses Qwen-related env vars (`QWEN_*`). If OCR behavior/config differs, trust backend code and `application.yml` over README text.
