@@ -2,7 +2,6 @@ package com.costlink.dto;
 
 import lombok.Data;
 import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -14,8 +13,8 @@ public class ReimbursementResponse {
     private String displayName;
     private String alipayAccount;
     private BigDecimal totalAmount;
-    private LocalDate vpnStartDate;
-    private LocalDate vpnEndDate;
+    private String reimbursementMonth;
+    private String remark;
     private String status;
     private String rejectReason;
     private LocalDateTime paidAt;

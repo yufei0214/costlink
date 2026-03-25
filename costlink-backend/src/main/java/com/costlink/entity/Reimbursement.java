@@ -3,7 +3,6 @@ package com.costlink.entity;
 import com.baomidou.mybatisplus.annotation.*;
 import lombok.Data;
 import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Data
@@ -16,9 +15,9 @@ public class Reimbursement {
 
     private BigDecimal totalAmount;
 
-    private LocalDate vpnStartDate;
+    private String reimbursementMonth;
 
-    private LocalDate vpnEndDate;
+    private String remark;
 
     private String status;
 

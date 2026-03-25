@@ -42,8 +42,10 @@ public class AdminController {
     public ApiResponse<IPage<ReimbursementResponse>> getAllReimbursements(
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int size,
-            @RequestParam(required = false) String status) {
-        IPage<ReimbursementResponse> result = reimbursementService.getAllReimbursements(page, size, status);
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String username,
+            @RequestParam(required = false) String month) {
+        IPage<ReimbursementResponse> result = reimbursementService.getAllReimbursements(page, size, status, username, month);
         return ApiResponse.success(result);
     }
 
@@ -93,16 +95,16 @@ public class AdminController {
     }
 
     @PostMapping("/export")
-    public ResponseEntity<byte[]> exportImages(@RequestBody Map<String, List<Long>> body) throws IOException {
+    public ResponseEntity<byte[]> exportExcel(@RequestBody Map<String, List<Long>> body) throws IOException {
         List<Long> ids = body.get("ids");
-        byte[] zipData = reimbursementService.exportImages(ids, ocrService.getUploadPath());
+        byte[] excelData = reimbursementService.exportReimbursements(ids, ocrService.getUploadPath());
 
         String filename = "reimbursements_" +
-                LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss")) + ".zip";
+                LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss")) + ".xlsx";
 
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
-                .contentType(MediaType.APPLICATION_OCTET_STREAM)
-                .body(zipData);
+                .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .body(excelData);
     }
 }

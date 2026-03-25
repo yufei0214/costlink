@@ -60,8 +60,8 @@ export const getReimbursementDetail = (id: number) =>
 export const getStatistics = () =>
   api.get('/admin/statistics')
 
-export const getAllReimbursements = (page: number, size: number, status?: string) =>
-  api.get('/admin/reimbursements', { params: { page, size, status } })
+export const getAllReimbursements = (page: number, size: number, status?: string, username?: string, month?: string) =>
+  api.get('/admin/reimbursements', { params: { page, size, status, username, month } })
 
 export const confirmReimbursement = (id: number) =>
   api.put(`/admin/reimbursement/${id}/confirm`)

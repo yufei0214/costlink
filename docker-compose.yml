@@ -30,7 +30,7 @@ services:
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/costlink?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai
       SPRING_DATASOURCE_USERNAME: costlink
       SPRING_DATASOURCE_PASSWORD: costlink123
-      LDAP_ENABLED: "true"
+      LDAP_ENABLED: "false"
       LDAP_URL: "ldap://ldap.startdt.net:389"
       LDAP_BASE: "dc=startdt,dc=net"
       LDAP_USER_DN_PATTERN: "uid={0},ou=people"

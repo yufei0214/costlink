@@ -4,13 +4,36 @@
 
     <el-card>
       <div class="toolbar">
-        <el-radio-group v-model="statusFilter" @change="loadData">
-          <el-radio-button label="">全部</el-radio-button>
-          <el-radio-button label="PENDING">待审核</el-radio-button>
-          <el-radio-button label="CONFIRMED">待付款</el-radio-button>
-          <el-radio-button label="PAID">已付款</el-radio-button>
-          <el-radio-button label="REJECTED">已驳回</el-radio-button>
-        </el-radio-group>
+        <div class="filters">
+          <el-radio-group v-model="statusFilter" @change="handleFilterChange">
+            <el-radio-button label="">全部</el-radio-button>
+            <el-radio-button label="PENDING">待审核</el-radio-button>
+            <el-radio-button label="CONFIRMED">待付款</el-radio-button>
+            <el-radio-button label="PAID">已付款</el-radio-button>
+            <el-radio-button label="REJECTED">已驳回</el-radio-button>
+          </el-radio-group>
+          <div class="filter-row">
+            <el-input
+              v-model="usernameFilter"
+              placeholder="真实姓名"
+              clearable
+              style="width: 150px"
+              @clear="handleFilterChange"
+              @keyup.enter="handleFilterChange"
+            />
+            <el-date-picker
+              v-model="monthFilter"
+              type="month"
+              placeholder="报销月份"
+              format="YYYY-MM"
+              value-format="YYYY-MM"
+              clearable
+              style="width: 150px"
+              @change="handleFilterChange"
+            />
+            <el-button type="primary" @click="handleFilterChange">搜索</el-button>
+          </div>
+        </div>
 
         <div>
           <el-button
@@ -26,7 +49,7 @@
             @click="handleExport"
           >
             <el-icon><Download /></el-icon>
-            导出选中图片
+            导出选中记录
           </el-button>
         </div>
       </div>
@@ -44,11 +67,7 @@
             {{ row.displayName || row.username }}
           </template>
         </el-table-column>
-        <el-table-column label="有效期" width="200">
-          <template #default="{ row }">
-            {{ formatDate(row.vpnStartDate) }} ~ {{ formatDate(row.vpnEndDate) }}
-          </template>
-        </el-table-column>
+        <el-table-column prop="reimbursementMonth" label="报销月份" width="120" />
         <el-table-column prop="totalAmount" label="金额" width="100">
           <template #default="{ row }">
             ¥{{ row.totalAmount }}
@@ -104,12 +123,13 @@
               {{ getStatusLabel(currentRecord.status) }}
             </el-tag>
           </el-descriptions-item>
-          <el-descriptions-item label="有效期">
-            {{ formatDate(currentRecord.vpnStartDate) }} ~ {{ formatDate(currentRecord.vpnEndDate) }}
-          </el-descriptions-item>
+          <el-descriptions-item label="报销月份">{{ currentRecord.reimbursementMonth }}</el-descriptions-item>
           <el-descriptions-item label="总金额">¥{{ currentRecord.totalAmount }}</el-descriptions-item>
           <el-descriptions-item label="申请时间">{{ formatDateTime(currentRecord.createdAt) }}</el-descriptions-item>
           <el-descriptions-item label="真实姓名">{{ currentRecord.alipayAccount || '-' }}</el-descriptions-item>
+          <el-descriptions-item v-if="currentRecord.remark" label="备注说明" :span="2">
+            {{ currentRecord.remark }}
+          </el-descriptions-item>
         </el-descriptions>
 
         <div class="images-section" v-if="currentRecord.images?.length">
@@ -169,8 +189,8 @@ interface ReimbursementRecord {
   displayName: string
   alipayAccount: string
   totalAmount: number
-  vpnStartDate: string
-  vpnEndDate: string
+  reimbursementMonth: string
+  remark: string
   status: string
   rejectReason: string
   createdAt: string
@@ -188,9 +208,12 @@ const page = ref(1)
 const pageSize = ref(10)
 const total = ref(0)
 const statusFilter = ref('')
+const usernameFilter = ref('')
+const monthFilter = ref('')
 const selectedIds = ref<number[]>([])
 const deletableIds = ref<number[]>([])
 const selectedTotalAmount = ref(0)
+const selectedMonths = ref<string[]>([])
 const dialogVisible = ref(false)
 const currentRecord = ref<ReimbursementRecord | null>(null)
 const rejectDialogVisible = ref(false)
@@ -207,7 +230,10 @@ onMounted(() => {
 async function loadData() {
   loading.value = true
   try {
-    const res = await getAllReimbursements(page.value, pageSize.value, statusFilter.value)
+    const res = await getAllReimbursements(
+      page.value, pageSize.value, statusFilter.value,
+      usernameFilter.value, monthFilter.value
+    )
     records.value = res.data.records
     total.value = res.data.total
   } catch (error) {
@@ -217,10 +243,16 @@ async function loadData() {
   }
 }
 
+function handleFilterChange() {
+  page.value = 1
+  loadData()
+}
+
 function handleSelectionChange(selection: ReimbursementRecord[]) {
-  const paidRecords = selection.filter(r => r.status === 'PAID')
-  selectedIds.value = paidRecords.map(r => r.id)
-  selectedTotalAmount.value = paidRecords.reduce((sum, r) => sum + r.totalAmount, 0)
+  const exportableRecords = selection.filter(r => r.status === 'PAID' || r.status === 'CONFIRMED')
+  selectedIds.value = exportableRecords.map(r => r.id)
+  selectedTotalAmount.value = exportableRecords.reduce((sum, r) => sum + r.totalAmount, 0)
+  selectedMonths.value = [...new Set(exportableRecords.map(r => r.reimbursementMonth).filter(Boolean))]
   deletableIds.value = selection
     .filter(r => r.status === 'REJECTED' || r.status === 'PAID')
     .map(r => r.id)
@@ -316,28 +348,23 @@ async function handleBatchDelete() {
 
 async function handleExport() {
   if (selectedIds.value.length === 0) {
-    ElMessage.warning('请先选择已付款的记录')
+    ElMessage.warning('请先选择待付款或已付款的记录')
     return
   }
 
   try {
     const response = await exportImages(selectedIds.value)
-    const blob = new Blob([response as any], { type: 'application/zip' })
+    const blob = new Blob([response as any], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
     const url = window.URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `reimbursements_${new Date().toISOString().split('T')[0]}_${selectedTotalAmount.value}元.zip`
+    a.download = `报销${selectedMonths.value.join(',')}月份_总金额为${selectedTotalAmount.value}元.xlsx`
     a.click()
     window.URL.revokeObjectURL(url)
     ElMessage.success('导出成功')
   } catch (error) {
     ElMessage.error('导出失败')
   }
-}
-
-function formatDate(dateStr: string) {
-  if (!dateStr) return '-'
-  return dateStr.split('T')[0]
 }
 
 function formatDateTime(dateStr: string) {
@@ -380,8 +407,20 @@ function getStatusLabel(status: string) {
 .toolbar {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   margin-bottom: 20px;
+}
+
+.filters {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.filter-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
 }
 
 .pagination {
