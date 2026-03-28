@@ -22,7 +22,7 @@ mybatis-plus:
 # Application Configuration
 app:
   jwt:
-    secret: ${JWT_SECRET:CostLinkJwtSecretKeyForVPNReimbursementService2024}
+    secret: ${JWT_SECRET:CostLinkJwtSecretKeyForReimbursementService2024}
     expiration: 86400000  # 24 hours
   upload:
     path: ${UPLOAD_PATH:/app/uploads}

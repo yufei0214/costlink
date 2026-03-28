@@ -1,5 +1,5 @@
 -- CostLink Database Initialization Script
--- VPN报销服务系统
+-- 报销服务系统
 
 SET NAMES utf8mb4;
 SET FOREIGN_KEY_CHECKS = 0;

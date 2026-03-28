@@ -15,7 +15,7 @@
     <artifactId>costlink-backend</artifactId>
     <version>1.0.0</version>
     <name>CostLink Backend</name>
-    <description>VPN Reimbursement Service Backend</description>
+    <description>Reimbursement Service Backend</description>
 
     <properties>
         <java.version>17</java.version>
