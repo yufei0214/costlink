@@ -8,6 +8,7 @@ interface User {
   displayName: string
   role: string
   alipayAccount: string | null
+  department: string | null
 }
 
 export const useUserStore = defineStore('user', () => {
@@ -46,6 +47,12 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
+  function updateDepartment(department: string) {
+    if (user.value) {
+      user.value.department = department
+    }
+  }
+
   return {
     token,
     user,
@@ -54,6 +61,7 @@ export const useUserStore = defineStore('user', () => {
     login,
     fetchUser,
     logout,
-    updateAlipayAccount
+    updateAlipayAccount,
+    updateDepartment
   }
 })

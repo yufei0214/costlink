@@ -13,6 +13,22 @@
           <div v-if="!realName.trim()" class="form-tip">提交报销前需填写真实姓名</div>
         </el-form-item>
 
+        <el-form-item label="所属组" required>
+          <el-select
+            v-model="department"
+            placeholder="请选择所属组"
+            style="width: 300px"
+          >
+            <el-option
+              v-for="opt in DEPARTMENT_OPTIONS"
+              :key="opt"
+              :label="opt"
+              :value="opt"
+            />
+          </el-select>
+          <div v-if="!department" class="form-tip">提交报销前需选择所属组</div>
+        </el-form-item>
+
         <el-form-item label="报销月份" prop="reimbursementMonth" required>
           <el-date-picker
             v-model="form.reimbursementMonth"
@@ -114,7 +130,15 @@
 import { ref, reactive, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
-import { createReimbursement, updateAlipayAccount } from '@/api'
+import { createReimbursement, updateAlipayAccount, updateDepartment } from '@/api'
+
+const DEPARTMENT_OPTIONS = [
+  '研发1组-数据组',
+  '研发1组-应用组',
+  '研发1组-SDK组',
+  '研发1组-质量组',
+  '研发2组'
+]
 import { ElMessage, ElImageViewer, type FormInstance, type FormRules, type UploadFile } from 'element-plus'
 
 interface UploadedImage {
@@ -129,6 +153,7 @@ const userStore = useUserStore()
 const formRef = ref<FormInstance>()
 const submitting = ref(false)
 const realName = ref(userStore.user?.alipayAccount || '')
+const department = ref(userStore.user?.department || '')
 const fileList = ref<UploadFile[]>([])
 const uploadedImages = ref<UploadedImage[]>([])
 
@@ -152,6 +177,7 @@ const rules: FormRules = {
 
 const canSubmit = computed(() => {
   return realName.value.trim() &&
+    department.value &&
     form.reimbursementMonth &&
     form.totalAmount > 0 &&
     uploadedImages.value.length > 0
@@ -221,6 +247,10 @@ async function handleSubmit() {
     ElMessage.warning('请填写真实姓名')
     return
   }
+  if (!department.value) {
+    ElMessage.warning('请选择所属组')
+    return
+  }
 
   await formRef.value.validate(async (valid) => {
     if (!valid) return
@@ -231,6 +261,11 @@ async function handleSubmit() {
       if (realName.value.trim() !== userStore.user?.alipayAccount) {
         await updateAlipayAccount(realName.value.trim())
         userStore.updateAlipayAccount(realName.value.trim())
+      }
+      // 如果所属组有变更，先保存
+      if (department.value !== userStore.user?.department) {
+        await updateDepartment(department.value)
+        userStore.updateDepartment(department.value)
       }
       await createReimbursement({
         totalAmount: form.totalAmount,

@@ -32,7 +32,8 @@ public class AuthController {
             user.getUsername(),
             user.getDisplayName(),
             user.getRole(),
-            user.getAlipayAccount()
+            user.getAlipayAccount(),
+            user.getDepartment()
         ));
     }
 

@@ -31,11 +31,32 @@
               style="width: 150px"
               @change="handleFilterChange"
             />
+            <el-select
+              v-model="departmentFilter"
+              placeholder="所属组"
+              clearable
+              style="width: 180px"
+              @change="handleFilterChange"
+            >
+              <el-option
+                v-for="opt in DEPARTMENT_OPTIONS"
+                :key="opt"
+                :label="opt"
+                :value="opt"
+              />
+            </el-select>
             <el-button type="primary" @click="handleFilterChange">搜索</el-button>
           </div>
         </div>
 
         <div>
+          <el-button
+            type="success"
+            :disabled="payableIds.length === 0"
+            @click="handleBatchPay"
+          >
+            批量标记已付款 ({{ payableIds.length }})
+          </el-button>
           <el-button
             type="danger"
             :disabled="deletableIds.length === 0"
@@ -74,6 +95,11 @@
           </template>
         </el-table-column>
         <el-table-column prop="alipayAccount" label="真实姓名" width="150" />
+        <el-table-column prop="department" label="所属组" width="160">
+          <template #default="{ row }">
+            {{ row.department || '-' }}
+          </template>
+        </el-table-column>
         <el-table-column prop="status" label="状态" width="100">
           <template #default="{ row }">
             <el-tag :type="getStatusType(row.status)">
@@ -127,6 +153,7 @@
           <el-descriptions-item label="总金额">¥{{ currentRecord.totalAmount }}</el-descriptions-item>
           <el-descriptions-item label="申请时间">{{ formatDateTime(currentRecord.createdAt) }}</el-descriptions-item>
           <el-descriptions-item label="真实姓名">{{ currentRecord.alipayAccount || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="所属组">{{ currentRecord.department || '-' }}</el-descriptions-item>
           <el-descriptions-item v-if="currentRecord.remark" label="备注说明" :span="2">
             {{ currentRecord.remark }}
           </el-descriptions-item>
@@ -146,6 +173,35 @@
           </div>
         </div>
       </div>
+    </el-dialog>
+
+    <!-- Confirm Dialog -->
+    <el-dialog v-model="confirmDialogVisible" title="确认报销" width="480px">
+      <div v-if="confirmingRecord" class="confirm-body">
+        <el-descriptions :column="1" border size="small">
+          <el-descriptions-item label="申请人">{{ confirmingRecord.displayName || confirmingRecord.username }}</el-descriptions-item>
+          <el-descriptions-item label="真实姓名">{{ confirmingRecord.alipayAccount || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="报销月份">{{ confirmingRecord.reimbursementMonth }}</el-descriptions-item>
+          <el-descriptions-item label="金额">¥{{ confirmingRecord.totalAmount }}</el-descriptions-item>
+          <el-descriptions-item v-if="confirmingRecord.remark" label="备注说明">{{ confirmingRecord.remark }}</el-descriptions-item>
+        </el-descriptions>
+        <el-form label-width="80px" style="margin-top: 16px">
+          <el-form-item label="所属组" required>
+            <el-select v-model="confirmDepartment" placeholder="请选择所属组" style="width: 100%">
+              <el-option
+                v-for="opt in DEPARTMENT_OPTIONS"
+                :key="opt"
+                :label="opt"
+                :value="opt"
+              />
+            </el-select>
+          </el-form-item>
+        </el-form>
+      </div>
+      <template #footer>
+        <el-button @click="confirmDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="submitConfirm">确认</el-button>
+      </template>
     </el-dialog>
 
     <!-- Reject Dialog -->
@@ -177,6 +233,7 @@ import {
   confirmReimbursement,
   rejectReimbursement,
   markAsPaid,
+  batchMarkAsPaid,
   deleteReimbursements,
   exportImages
 } from '@/api'
@@ -188,6 +245,7 @@ interface ReimbursementRecord {
   username: string
   displayName: string
   alipayAccount: string
+  department: string
   totalAmount: number
   reimbursementMonth: string
   remark: string
@@ -201,6 +259,14 @@ interface ReimbursementRecord {
   }>
 }
 
+const DEPARTMENT_OPTIONS = [
+  '研发1组-数据组',
+  '研发1组-应用组',
+  '研发1组-SDK组',
+  '研发1组-质量组',
+  '研发2组'
+]
+
 const route = useRoute()
 const loading = ref(false)
 const records = ref<ReimbursementRecord[]>([])
@@ -210,8 +276,11 @@ const total = ref(0)
 const statusFilter = ref('')
 const usernameFilter = ref('')
 const monthFilter = ref('')
+const departmentFilter = ref('')
 const selectedIds = ref<number[]>([])
 const deletableIds = ref<number[]>([])
+const payableIds = ref<number[]>([])
+const payableTotalAmount = ref(0)
 const selectedTotalAmount = ref(0)
 const selectedMonths = ref<string[]>([])
 const dialogVisible = ref(false)
@@ -219,6 +288,9 @@ const currentRecord = ref<ReimbursementRecord | null>(null)
 const rejectDialogVisible = ref(false)
 const rejectReason = ref('')
 const rejectingId = ref<number | null>(null)
+const confirmDialogVisible = ref(false)
+const confirmingRecord = ref<ReimbursementRecord | null>(null)
+const confirmDepartment = ref('')
 
 onMounted(() => {
   if (route.query.status) {
@@ -232,7 +304,7 @@ async function loadData() {
   try {
     const res = await getAllReimbursements(
       page.value, pageSize.value, statusFilter.value,
-      usernameFilter.value, monthFilter.value
+      usernameFilter.value, monthFilter.value, departmentFilter.value
     )
     records.value = res.data.records
     total.value = res.data.total
@@ -256,6 +328,9 @@ function handleSelectionChange(selection: ReimbursementRecord[]) {
   deletableIds.value = selection
     .filter(r => r.status === 'REJECTED' || r.status === 'PAID')
     .map(r => r.id)
+  const payableRecords = selection.filter(r => r.status === 'CONFIRMED')
+  payableIds.value = payableRecords.map(r => r.id)
+  payableTotalAmount.value = payableRecords.reduce((sum, r) => sum + r.totalAmount, 0)
 }
 
 async function viewDetail(row: ReimbursementRecord) {
@@ -268,22 +343,22 @@ async function viewDetail(row: ReimbursementRecord) {
   }
 }
 
-async function handleConfirm(row: ReimbursementRecord) {
-  const remarkText = row.remark ? `\n备注说明：${row.remark}` : ''
-  await ElMessageBox.confirm(
-    `确定要确认此报销申请吗？\n\n申请人：${row.displayName || row.username}\n报销月份：${row.reimbursementMonth}\n金额：¥${row.totalAmount}${remarkText}`,
-    '确认',
-    {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'info',
-      dangerouslyUseHTMLString: false
-    }
-  )
+function handleConfirm(row: ReimbursementRecord) {
+  confirmingRecord.value = row
+  confirmDepartment.value = row.department || ''
+  confirmDialogVisible.value = true
+}
 
+async function submitConfirm() {
+  if (!confirmingRecord.value) return
+  if (!confirmDepartment.value) {
+    ElMessage.warning('请选择所属组')
+    return
+  }
   try {
-    await confirmReimbursement(row.id)
+    await confirmReimbursement(confirmingRecord.value.id, confirmDepartment.value)
     ElMessage.success('确认成功')
+    confirmDialogVisible.value = false
     loadData()
   } catch (error: any) {
     ElMessage.error(error.message || '操作失败')
@@ -332,6 +407,26 @@ async function handlePay(row: ReimbursementRecord) {
   }
 }
 
+async function handleBatchPay() {
+  await ElMessageBox.confirm(
+    `确定已完成向选中的 ${payableIds.value.length} 笔待付款记录转账（共 ¥${payableTotalAmount.value}）吗？`,
+    '批量标记已付款',
+    {
+      confirmButtonText: '确认已付款',
+      cancelButtonText: '取消',
+      type: 'warning'
+    }
+  )
+
+  try {
+    await batchMarkAsPaid(payableIds.value)
+    ElMessage.success('批量标记成功')
+    loadData()
+  } catch (error: any) {
+    ElMessage.error(error.message || '操作失败')
+  }
+}
+
 async function handleBatchDelete() {
   await ElMessageBox.confirm(
     `确定要删除选中的 ${deletableIds.value.length} 条记录吗？此操作不可恢复。`,
@@ -353,6 +448,10 @@ async function handleBatchDelete() {
 }
 
 async function handleExport() {
+  if (!monthFilter.value) {
+    ElMessage.warning('导出前请先在筛选条件中选择报销月份')
+    return
+  }
   if (selectedIds.value.length === 0) {
     ElMessage.warning('请先选择待付款或已付款的记录')
     return
@@ -360,11 +459,11 @@ async function handleExport() {
 
   try {
     const response = await exportImages(selectedIds.value)
-    const blob = new Blob([response as any], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+    const blob = new Blob([response as any], { type: 'application/zip' })
     const url = window.URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `报销${selectedMonths.value.join(',')}月份_总金额为${selectedTotalAmount.value}元.xlsx`
+    a.download = `报销${selectedMonths.value.join(',')}月份_总金额为${selectedTotalAmount.value}元.zip`
     a.click()
     window.URL.revokeObjectURL(url)
     ElMessage.success('导出成功')

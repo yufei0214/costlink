@@ -42,4 +42,7 @@ public class Reimbursement {
 
     @TableField(exist = false)
     private String alipayAccount;
+
+    @TableField(exist = false)
+    private String department;
 }

@@ -12,6 +12,7 @@ public class ReimbursementResponse {
     private String username;
     private String displayName;
     private String alipayAccount;
+    private String department;
     private BigDecimal totalAmount;
     private String reimbursementMonth;
     private String remark;

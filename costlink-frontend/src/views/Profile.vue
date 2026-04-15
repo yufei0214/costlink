@@ -27,8 +27,23 @@
           />
         </el-form-item>
 
+        <el-form-item label="所属组">
+          <el-select
+            v-model="form.department"
+            placeholder="请选择所属组"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="opt in DEPARTMENT_OPTIONS"
+              :key="opt"
+              :label="opt"
+              :value="opt"
+            />
+          </el-select>
+        </el-form-item>
+
         <el-form-item>
-          <el-button type="primary" :loading="saving" @click="saveAlipayAccount">
+          <el-button type="primary" :loading="saving" @click="saveProfile">
             保存
           </el-button>
         </el-form-item>
@@ -40,30 +55,50 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { useUserStore } from '@/stores/user'
-import { updateAlipayAccount } from '@/api'
+import { updateAlipayAccount, updateDepartment } from '@/api'
 import { ElMessage } from 'element-plus'
+
+const DEPARTMENT_OPTIONS = [
+  '研发1组-数据组',
+  '研发1组-应用组',
+  '研发1组-SDK组',
+  '研发1组-质量组',
+  '研发2组'
+]
 
 const userStore = useUserStore()
 const saving = ref(false)
 
 const form = reactive({
-  alipayAccount: ''
+  alipayAccount: '',
+  department: ''
 })
 
 onMounted(() => {
   form.alipayAccount = userStore.user?.alipayAccount || ''
+  form.department = userStore.user?.department || ''
 })
 
-async function saveAlipayAccount() {
+async function saveProfile() {
   if (!form.alipayAccount.trim()) {
     ElMessage.warning('请输入真实姓名')
+    return
+  }
+  if (!form.department) {
+    ElMessage.warning('请选择所属组')
     return
   }
 
   saving.value = true
   try {
-    await updateAlipayAccount(form.alipayAccount)
-    userStore.updateAlipayAccount(form.alipayAccount)
+    if (form.alipayAccount.trim() !== (userStore.user?.alipayAccount || '')) {
+      await updateAlipayAccount(form.alipayAccount.trim())
+      userStore.updateAlipayAccount(form.alipayAccount.trim())
+    }
+    if (form.department !== (userStore.user?.department || '')) {
+      await updateDepartment(form.department)
+      userStore.updateDepartment(form.department)
+    }
     ElMessage.success('保存成功')
   } catch (error: any) {
     ElMessage.error(error.message || '保存失败')

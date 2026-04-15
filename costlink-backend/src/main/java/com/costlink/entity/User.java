@@ -20,6 +20,8 @@ public class User {
 
     private String alipayAccount;
 
+    private String department;
+
     private String role;
 
     @TableField(fill = FieldFill.INSERT)

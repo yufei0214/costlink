@@ -35,6 +35,9 @@ export const getCurrentUser = () =>
 export const updateAlipayAccount = (alipayAccount: string) =>
   api.put('/user/alipay', { alipayAccount })
 
+export const updateDepartment = (department: string) =>
+  api.put('/user/department', { department })
+
 export const getProfile = () =>
   api.get('/user/profile')
 
@@ -60,17 +63,20 @@ export const getReimbursementDetail = (id: number) =>
 export const getStatistics = () =>
   api.get('/admin/statistics')
 
-export const getAllReimbursements = (page: number, size: number, status?: string, username?: string, month?: string) =>
-  api.get('/admin/reimbursements', { params: { page, size, status, username, month } })
+export const getAllReimbursements = (page: number, size: number, status?: string, username?: string, month?: string, department?: string) =>
+  api.get('/admin/reimbursements', { params: { page, size, status, username, month, department } })
 
-export const confirmReimbursement = (id: number) =>
-  api.put(`/admin/reimbursement/${id}/confirm`)
+export const confirmReimbursement = (id: number, department?: string) =>
+  api.put(`/admin/reimbursement/${id}/confirm`, { department })
 
 export const rejectReimbursement = (id: number, reason: string) =>
   api.put(`/admin/reimbursement/${id}/reject`, { reason })
 
 export const markAsPaid = (id: number) =>
   api.post(`/admin/reimbursement/${id}/pay`)
+
+export const batchMarkAsPaid = (ids: number[]) =>
+  api.post('/admin/reimbursements/pay', { ids })
 
 export const updateAdminPayAccount = (alipayPayAccount: string) =>
   api.put('/admin/config/alipay', { alipayPayAccount })

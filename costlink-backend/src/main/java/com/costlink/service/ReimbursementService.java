@@ -28,8 +28,12 @@ import java.nio.file.*;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 @Service
 @RequiredArgsConstructor
@@ -38,6 +42,7 @@ public class ReimbursementService {
     private final ReimbursementMapper reimbursementMapper;
     private final ReimbursementImageMapper imageMapper;
     private final UserMapper userMapper;
+    private final UserService userService;
 
     @Transactional
     public Reimbursement createReimbursement(Long userId, ReimbursementRequest request) {
@@ -79,12 +84,13 @@ public class ReimbursementService {
         return result.convert(this::toResponse);
     }
 
-    public IPage<ReimbursementResponse> getAllReimbursements(int page, int size, String status, String username, String month) {
+    public IPage<ReimbursementResponse> getAllReimbursements(int page, int size, String status, String username, String month, String department) {
         Page<Reimbursement> pageParam = new Page<>(page, size);
         String statusParam = (status != null && !status.isEmpty()) ? status : null;
         String usernameParam = (username != null && !username.isEmpty()) ? "%" + username + "%" : null;
         String monthParam = (month != null && !month.isEmpty()) ? month : null;
-        IPage<Reimbursement> result = reimbursementMapper.selectWithFilters(pageParam, statusParam, usernameParam, monthParam);
+        String departmentParam = (department != null && !department.isEmpty()) ? department : null;
+        IPage<Reimbursement> result = reimbursementMapper.selectWithFilters(pageParam, statusParam, usernameParam, monthParam, departmentParam);
         return result.convert(this::toResponse);
     }
 
@@ -97,13 +103,16 @@ public class ReimbursementService {
     }
 
     @Transactional
-    public void confirmReimbursement(Long id) {
+    public void confirmReimbursement(Long id, String department) {
         Reimbursement reimbursement = reimbursementMapper.selectById(id);
         if (reimbursement == null) {
             throw new BusinessException("报销记录不存在");
         }
         if (!"PENDING".equals(reimbursement.getStatus())) {
             throw new BusinessException("只能确认待审核的报销申请");
+        }
+        if (department != null && !department.isEmpty()) {
+            userService.updateDepartment(reimbursement.getUserId(), department);
         }
         reimbursement.setStatus("CONFIRMED");
         reimbursementMapper.updateById(reimbursement);
@@ -139,6 +148,29 @@ public class ReimbursementService {
     }
 
     @Transactional
+    public void markAsPaidBatch(List<Long> ids, Long adminId) {
+        if (ids == null || ids.isEmpty()) {
+            throw new BusinessException("请选择要标记的记录");
+        }
+        List<Reimbursement> list = reimbursementMapper.selectBatchIds(ids);
+        if (list.size() != ids.size()) {
+            throw new BusinessException("部分记录不存在");
+        }
+        for (Reimbursement r : list) {
+            if (!"CONFIRMED".equals(r.getStatus())) {
+                throw new BusinessException("只能支付已确认的报销申请（ID: " + r.getId() + "）");
+            }
+        }
+        LocalDateTime now = LocalDateTime.now();
+        for (Reimbursement r : list) {
+            r.setStatus("PAID");
+            r.setPaidAt(now);
+            r.setPaidBy(adminId);
+            reimbursementMapper.updateById(r);
+        }
+    }
+
+    @Transactional
     public void deleteReimbursements(List<Long> ids) {
         if (ids == null || ids.isEmpty()) {
             throw new BusinessException("请选择要删除的记录");
@@ -164,11 +196,36 @@ public class ReimbursementService {
     }
 
     public byte[] exportReimbursements(List<Long> ids, String uploadPath) throws IOException {
+        // Load records and group by department (null/empty → "未分组")
+        Map<String, List<Reimbursement>> groups = new LinkedHashMap<>();
+        for (Long id : ids) {
+            Reimbursement r = reimbursementMapper.selectByIdWithUser(id);
+            if (r == null ||
+                (!"PAID".equals(r.getStatus()) && !"CONFIRMED".equals(r.getStatus()))) {
+                continue;
+            }
+            String dept = (r.getDepartment() != null && !r.getDepartment().isEmpty())
+                ? r.getDepartment() : "未分组";
+            groups.computeIfAbsent(dept, k -> new ArrayList<>()).add(r);
+        }
+
+        ByteArrayOutputStream zipOut = new ByteArrayOutputStream();
+        try (ZipOutputStream zos = new ZipOutputStream(zipOut)) {
+            for (Map.Entry<String, List<Reimbursement>> entry : groups.entrySet()) {
+                byte[] xlsx = buildGroupExcel(entry.getValue(), uploadPath);
+                zos.putNextEntry(new ZipEntry(sanitizeFilename(entry.getKey()) + ".xlsx"));
+                zos.write(xlsx);
+                zos.closeEntry();
+            }
+        }
+        return zipOut.toByteArray();
+    }
+
+    private byte[] buildGroupExcel(List<Reimbursement> records, String uploadPath) throws IOException {
         try (Workbook workbook = new XSSFWorkbook()) {
             Sheet sheet = workbook.createSheet("报销汇总");
             XSSFDrawing drawing = (XSSFDrawing) sheet.createDrawingPatriarch();
 
-            // Header style
             CellStyle headerStyle = workbook.createCellStyle();
             Font headerFont = workbook.createFont();
             headerFont.setBold(true);
@@ -176,44 +233,42 @@ public class ReimbursementService {
             headerStyle.setAlignment(HorizontalAlignment.CENTER);
             headerStyle.setVerticalAlignment(VerticalAlignment.CENTER);
 
-            // Data cell style
             CellStyle dataStyle = workbook.createCellStyle();
             dataStyle.setVerticalAlignment(VerticalAlignment.CENTER);
             dataStyle.setWrapText(true);
 
-            // Header row
             Row headerRow = sheet.createRow(0);
-            String[] headers = {"真实姓名", "报销月份", "报销总金额", "备注说明", "支付截图"};
+            String[] headers = {"真实姓名", "所属组", "报销月份", "报销总金额", "备注说明", "支付截图"};
             for (int i = 0; i < headers.length; i++) {
                 Cell cell = headerRow.createCell(i);
                 cell.setCellValue(headers[i]);
                 cell.setCellStyle(headerStyle);
             }
 
-            // Column widths
             sheet.setColumnWidth(0, 15 * 256);
-            sheet.setColumnWidth(1, 12 * 256);
-            sheet.setColumnWidth(2, 15 * 256);
-            sheet.setColumnWidth(3, 25 * 256);
-            sheet.setColumnWidth(4, 60 * 256);
+            sheet.setColumnWidth(1, 18 * 256);
+            sheet.setColumnWidth(2, 12 * 256);
+            sheet.setColumnWidth(3, 15 * 256);
+            sheet.setColumnWidth(4, 25 * 256);
+            sheet.setColumnWidth(5, 60 * 256);
 
             int rowIndex = 1;
-            for (Long id : ids) {
-                Reimbursement reimbursement = reimbursementMapper.selectByIdWithUser(id);
-                if (reimbursement == null ||
-                    (!"PAID".equals(reimbursement.getStatus()) && !"CONFIRMED".equals(reimbursement.getStatus()))) {
-                    continue;
+            java.math.BigDecimal groupTotal = java.math.BigDecimal.ZERO;
+            for (Reimbursement reimbursement : records) {
+                if (reimbursement.getTotalAmount() != null) {
+                    groupTotal = groupTotal.add(reimbursement.getTotalAmount());
                 }
-
                 String displayName = reimbursement.getAlipayAccount() != null ?
                     reimbursement.getAlipayAccount() : (reimbursement.getDisplayName() != null ?
                     reimbursement.getDisplayName() : reimbursement.getUsername());
                 String month = reimbursement.getReimbursementMonth() != null ?
                     reimbursement.getReimbursementMonth() : "";
+                String department = reimbursement.getDepartment() != null ?
+                    reimbursement.getDepartment() : "";
 
                 List<ReimbursementImage> images = imageMapper.selectList(
                     new LambdaQueryWrapper<ReimbursementImage>()
-                        .eq(ReimbursementImage::getReimbursementId, id)
+                        .eq(ReimbursementImage::getReimbursementId, reimbursement.getId())
                         .orderByAsc(ReimbursementImage::getSortOrder)
                 );
 
@@ -223,20 +278,23 @@ public class ReimbursementService {
                 nameCell.setCellValue(displayName);
                 nameCell.setCellStyle(dataStyle);
 
-                Cell monthCell = row.createCell(1);
+                Cell deptCell = row.createCell(1);
+                deptCell.setCellValue(department);
+                deptCell.setCellStyle(dataStyle);
+
+                Cell monthCell = row.createCell(2);
                 monthCell.setCellValue(month);
                 monthCell.setCellStyle(dataStyle);
 
-                Cell amountCell = row.createCell(2);
+                Cell amountCell = row.createCell(3);
                 amountCell.setCellValue(reimbursement.getTotalAmount().doubleValue());
                 amountCell.setCellStyle(dataStyle);
 
-                Cell remarkCell = row.createCell(3);
+                Cell remarkCell = row.createCell(4);
                 remarkCell.setCellValue(reimbursement.getRemark() != null ? reimbursement.getRemark() : "");
                 remarkCell.setCellStyle(dataStyle);
 
-                // Embed images in the "支付截图" column
-                int imgCol = 4;
+                int imgCol = 5;
                 int imageCount = 0;
                 for (int i = 0; i < images.size(); i++) {
                     ReimbursementImage image = images.get(i);
@@ -247,7 +305,6 @@ public class ReimbursementService {
                     int pictureType = getPictureType(image.getOriginalName());
                     int pictureIdx = workbook.addPicture(imageBytes, pictureType);
 
-                    // Each image occupies one column, side by side
                     int col = imgCol + imageCount;
                     XSSFClientAnchor anchor = new XSSFClientAnchor(
                         Units.EMU_PER_PIXEL, Units.EMU_PER_PIXEL,
@@ -257,22 +314,34 @@ public class ReimbursementService {
                     anchor.setAnchorType(ClientAnchor.AnchorType.MOVE_AND_RESIZE);
                     drawing.createPicture(anchor, pictureIdx);
 
-                    // Set column width for extra image columns
                     if (imageCount > 0) {
                         sheet.setColumnWidth(col, 60 * 256);
                     }
                     imageCount++;
                 }
 
-                // Set row height to accommodate images
                 row.setHeightInPoints(150);
                 rowIndex++;
             }
+
+            // Totals row
+            Row totalRow = sheet.createRow(rowIndex);
+            Cell totalLabel = totalRow.createCell(0);
+            totalLabel.setCellValue("合计");
+            totalLabel.setCellStyle(headerStyle);
+            sheet.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(rowIndex, rowIndex, 0, 2));
+            Cell totalCell = totalRow.createCell(3);
+            totalCell.setCellValue(groupTotal.doubleValue());
+            totalCell.setCellStyle(headerStyle);
 
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             workbook.write(baos);
             return baos.toByteArray();
         }
+    }
+
+    private String sanitizeFilename(String name) {
+        return name.replaceAll("[\\\\/:*?\"<>|]", "_");
     }
 
     private int getPictureType(String filename) {
@@ -295,6 +364,7 @@ public class ReimbursementService {
         response.setUsername(r.getUsername());
         response.setDisplayName(r.getDisplayName());
         response.setAlipayAccount(r.getAlipayAccount());
+        response.setDepartment(r.getDepartment());
         response.setTotalAmount(r.getTotalAmount());
         response.setReimbursementMonth(r.getReimbursementMonth());
         response.setRemark(r.getRemark());

@@ -44,14 +44,18 @@ public class AdminController {
             @RequestParam(defaultValue = "10") int size,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String username,
-            @RequestParam(required = false) String month) {
-        IPage<ReimbursementResponse> result = reimbursementService.getAllReimbursements(page, size, status, username, month);
+            @RequestParam(required = false) String month,
+            @RequestParam(required = false) String department) {
+        IPage<ReimbursementResponse> result = reimbursementService.getAllReimbursements(page, size, status, username, month, department);
         return ApiResponse.success(result);
     }
 
     @PutMapping("/reimbursement/{id}/confirm")
-    public ApiResponse<Void> confirmReimbursement(@PathVariable Long id) {
-        reimbursementService.confirmReimbursement(id);
+    public ApiResponse<Void> confirmReimbursement(
+            @PathVariable Long id,
+            @RequestBody(required = false) Map<String, String> body) {
+        String department = body != null ? body.get("department") : null;
+        reimbursementService.confirmReimbursement(id, department);
         return ApiResponse.success("确认成功", null);
     }
 
@@ -70,6 +74,15 @@ public class AdminController {
             @AuthenticationPrincipal UserPrincipal principal) {
         reimbursementService.markAsPaid(id, principal.getId());
         return ApiResponse.success("标记付款成功", null);
+    }
+
+    @PostMapping("/reimbursements/pay")
+    public ApiResponse<Void> markAsPaidBatch(
+            @RequestBody Map<String, List<Long>> body,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        List<Long> ids = body.get("ids");
+        reimbursementService.markAsPaidBatch(ids, principal.getId());
+        return ApiResponse.success("批量标记付款成功", null);
     }
 
     @DeleteMapping("/reimbursements")
@@ -97,14 +110,14 @@ public class AdminController {
     @PostMapping("/export")
     public ResponseEntity<byte[]> exportExcel(@RequestBody Map<String, List<Long>> body) throws IOException {
         List<Long> ids = body.get("ids");
-        byte[] excelData = reimbursementService.exportReimbursements(ids, ocrService.getUploadPath());
+        byte[] zipData = reimbursementService.exportReimbursements(ids, ocrService.getUploadPath());
 
         String filename = "reimbursements_" +
-                LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss")) + ".xlsx";
+                LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss")) + ".zip";
 
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
-                .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
-                .body(excelData);
+                .contentType(MediaType.parseMediaType("application/zip"))
+                .body(zipData);
     }
 }

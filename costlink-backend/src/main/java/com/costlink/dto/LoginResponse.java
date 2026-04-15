@@ -17,5 +17,6 @@ public class LoginResponse {
         private String displayName;
         private String role;
         private String alipayAccount;
+        private String department;
     }
 }

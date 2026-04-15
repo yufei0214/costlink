@@ -9,6 +9,8 @@ import com.costlink.mapper.UserMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.util.Set;
+
 @Service
 @RequiredArgsConstructor
 public class UserService {
@@ -26,6 +28,27 @@ public class UserService {
             throw new BusinessException("用户不存在");
         }
         user.setAlipayAccount(alipayAccount);
+        userMapper.updateById(user);
+        return user;
+    }
+
+    private static final Set<String> VALID_DEPARTMENTS = Set.of(
+        "研发1组-数据组",
+        "研发1组-应用组",
+        "研发1组-SDK组",
+        "研发1组-质量组",
+        "研发2组"
+    );
+
+    public User updateDepartment(Long userId, String department) {
+        if (department == null || !VALID_DEPARTMENTS.contains(department)) {
+            throw new BusinessException("所属组取值无效");
+        }
+        User user = userMapper.selectById(userId);
+        if (user == null) {
+            throw new BusinessException("用户不存在");
+        }
+        user.setDepartment(department);
         userMapper.updateById(user);
         return user;
     }

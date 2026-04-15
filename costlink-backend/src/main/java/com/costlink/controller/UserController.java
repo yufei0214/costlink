@@ -33,4 +33,14 @@ public class UserController {
         user.setPassword(null);
         return ApiResponse.success("支付宝账号更新成功", user);
     }
+
+    @PutMapping("/department")
+    public ApiResponse<User> updateDepartment(
+            @AuthenticationPrincipal UserPrincipal principal,
+            @RequestBody Map<String, String> body) {
+        String department = body.get("department");
+        User user = userService.updateDepartment(principal.getId(), department);
+        user.setPassword(null);
+        return ApiResponse.success("所属组更新成功", user);
+    }
 }

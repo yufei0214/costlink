@@ -92,7 +92,8 @@ public class AuthService {
                 user.getUsername(),
                 user.getDisplayName(),
                 user.getRole(),
-                user.getAlipayAccount()
+                user.getAlipayAccount(),
+                user.getDepartment()
             ));
         }
 
@@ -113,7 +114,8 @@ public class AuthService {
             user.getUsername(),
             user.getDisplayName(),
             user.getRole(),
-            user.getAlipayAccount()
+            user.getAlipayAccount(),
+            user.getDepartment()
         ));
     }
 
